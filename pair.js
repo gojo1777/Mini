@@ -26,18 +26,16 @@ let db;
 const config = {
     PREFIX: '.',
     RCD_IMAGE_PATH: 'https://files.catbox.moe/rcrrvt.png',
-    NEWSLETTER_JID: '120363402466616623@newsletter',
     AUTO_VIEW_STATUS: 'true',
-    AUTO_LIKE_STATUS: 'true',
-    AUTO_LIKE_EMOJI: ['💖', '❤️', '✨', '🌸', '🌹']
+    AUTO_LIKE_STATUS: 'true'
 };
 
 const activeSockets = new Map();
 
 // ============================================
-// 🛠️ DB UTILITIES (SESSION STORAGE)
+// 🛠️ DATABASE & SESSION HELPERS
 // ============================================
-async function saveSessionToDB(number, sessionPath) {
+async function saveToDB(number, sessionPath) {
     try {
         if (!db) return;
         const credsPath = path.join(sessionPath, 'creds.json');
@@ -49,142 +47,109 @@ async function saveSessionToDB(number, sessionPath) {
                 { upsert: true }
             );
         }
-    } catch (e) { console.error("DB Save Error:", e); }
+    } catch (e) { console.error("DB Save Error"); }
 }
 
-async function restoreSessionFromDB(number, sessionPath) {
+async function restoreFromDB(number, sessionPath) {
     try {
         if (!db) return;
         const result = await db.collection('sessions').findOne({ id: number });
         if (result && result.creds) {
             fs.ensureDirSync(sessionPath);
             fs.writeFileSync(path.join(sessionPath, 'creds.json'), JSON.stringify(result.creds));
+            return true;
         }
-    } catch (e) { console.error("DB Restore Error:", e); }
+    } catch (e) { console.error("DB Restore Error"); }
+    return false;
 }
 
 // ============================================
-// 🤖 BOT ENGINE (MULTI-SESSION SUPPORT)
+// 🤖 CORE ENGINE
 // ============================================
-async function StartSayuraBot(number, res) {
+async function EmpirePair(number, res) {
     const sanitizedNumber = number.replace(/[^0-9]/g, '');
     const sessionPath = path.join(SESSION_BASE_PATH, `session_${sanitizedNumber}`);
 
-    // පළමුව DB එකෙන් Session එකක් තියේද බලනවා
-    await restoreSessionFromDB(sanitizedNumber, sessionPath);
+    await restoreFromDB(sanitizedNumber, sessionPath);
 
     const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
+    
     const socket = makeWASocket({
         auth: {
             creds: state.creds,
             keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' })),
         },
+        printQRInTerminal: false,
         logger: pino({ level: 'silent' }),
         browser: Browsers.macOS('Safari')
     });
 
-    // Credential Updates
     socket.ev.on('creds.update', async () => {
         await saveCreds();
-        await saveSessionToDB(sanitizedNumber, sessionPath);
+        await saveToDB(sanitizedNumber, sessionPath);
     });
 
-    // Connection Logic
     socket.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect } = update;
         
         if (connection === 'open') {
-            console.log(`✅ ${sanitizedNumber} Connected!`);
             activeSockets.set(sanitizedNumber, socket);
             await db.collection('active_numbers').updateOne({ id: sanitizedNumber }, { $set: { status: 'active' } }, { upsert: true });
-            
+
+            // මැසේජ් එක යවන කොටස
             const userJid = jidNormalizedUser(socket.user.id);
+            const sessionId = Buffer.from(JSON.stringify(state.creds)).toString('base64'); // Session ID එක හදනවා
+
+            const loginMsg = `🧚‍♂️ *SAYURA MD MINI CONNECTED* 🧚‍♂️\n\n` +
+                             `✅ *Status:* Online\n` +
+                             `📱 *Number:* ${sanitizedNumber}\n` +
+                             `🔑 *Session ID:* \`SAYURA-MD-MINI;;${sessionId}\`\n\n` +
+                             `> *Keep this ID safe!*`;
+
             await socket.sendMessage(userJid, { 
                 image: { url: config.RCD_IMAGE_PATH },
-                caption: `🚀 *SAYURA MD MINI V1 CONNECTED*\n\nYour bot is now active on ${sanitizedNumber}.`
+                caption: loginMsg 
             });
+            
+            console.log(`✅ ${sanitizedNumber} connected & message sent.`);
         }
 
         if (connection === 'close') {
-            const reason = lastDisconnect?.error?.output?.statusCode;
-            if (reason !== 401) { // 401 නෙවෙයි නම් විතරක් reconnect වෙනවා
-                console.log(`🔄 Reconnecting ${sanitizedNumber}...`);
-                StartSayuraBot(sanitizedNumber, { headersSent: true });
-            }
+            if (lastDisconnect?.error?.output?.statusCode !== 401) EmpirePair(sanitizedNumber, { headersSent: true });
         }
     });
 
-    // Message & Status Handling
-    socket.ev.on('messages.upsert', async ({ messages }) => {
-        const msg = messages[0];
-        if (!msg.message) return;
-        const sender = msg.key.remoteJid;
-
-        // Auto Status View/Like
-        if (sender === 'status@broadcast') {
-            if (config.AUTO_VIEW_STATUS === 'true') await socket.readMessages([msg.key]);
-            if (config.AUTO_LIKE_STATUS === 'true') {
-                const emoji = config.AUTO_LIKE_EMOJI[Math.floor(Math.random() * config.AUTO_LIKE_EMOJI.length)];
-                await socket.sendMessage(sender, { react: { text: emoji, key: msg.key } }, { statusJidList: [msg.key.participant] });
-            }
-            return;
-        }
-
-        // Simple Commands
-        const text = (msg.message.conversation || msg.message.extendedTextMessage?.text || '').trim();
-        if (!text.startsWith(config.PREFIX)) return;
-        const command = text.slice(config.PREFIX.length).split(' ')[0].toLowerCase();
-
-        if (command === 'alive') {
-            await socket.sendMessage(sender, { text: "SAYURA MINI MD is Alive! 🟢" }, { quoted: msg });
-        }
-        
-        if (command === 'deleteme') {
-            if (fs.existsSync(sessionPath)) fs.removeSync(sessionPath);
-            await db.collection('sessions').deleteOne({ id: sanitizedNumber });
-            await db.collection('active_numbers').deleteOne({ id: sanitizedNumber });
-            await socket.sendMessage(sender, { text: "🗑️ Session Deleted. Goodbye!" });
-            socket.ws.close();
-        }
-    });
-
-    // Web pairing code request
+    // Pairing Code Request
     if (!socket.authState.creds.registered) {
-        await delay(1500);
+        await delay(3000);
         try {
             const code = await socket.requestPairingCode(sanitizedNumber);
-            if (res && !res.headersSent) res.send({ code });
+            if (res && !res.headersSent) res.status(200).json({ code });
         } catch (e) {
-            if (res && !res.headersSent) res.status(500).send({ error: "Code request failed" });
+            if (res && !res.headersSent) res.status(500).json({ error: "Failed to get code" });
         }
     }
 }
 
 // ============================================
-// 🌐 ROUTES & AUTO-RECONNECT
+// 🌐 ROUTES
 // ============================================
-router.get('/', async (req, res) => {
+router.get('/code', async (req, res) => {
     const { number } = req.query;
-    if (!number) return res.status(400).send({ error: 'Number required. (?number=94xxx)' });
-    await StartSayuraBot(number, res);
+    if (!number) return res.status(400).json({ error: "Number required" });
+    await EmpirePair(number, res);
 });
 
-async function bootSystem() {
-    try {
-        await mongoClient.connect();
-        db = mongoClient.db("whatsapp_bot_db");
-        console.log("✅ MongoDB Connected Successfully!");
+router.get('/', (req, res) => res.send("SAYURA MD MINI SERVER ACTIVE ✅"));
 
-        // බොට් පණගැන්වෙන විට කලින් Active තිබූ ඔක්කොම නම්බර්ස් පණගන්වනවා
-        const activeDocs = await db.collection('active_numbers').find({ status: 'active' }).toArray();
-        for (const doc of activeDocs) {
-            console.log(`🔁 Reconnecting ${doc.id}...`);
-            await StartSayuraBot(doc.id, { headersSent: true });
-            await delay(2000);
-        }
-    } catch (e) { console.error("Boot Error:", e); }
-}
-
-bootSystem();
+// Start
+mongoClient.connect().then(() => {
+    db = mongoClient.db("whatsapp_bot_db");
+    console.log("✅ MongoDB Connected");
+    
+    db.collection('active_numbers').find({ status: 'active' }).toArray().then(docs => {
+        docs.forEach(doc => EmpirePair(doc.id, { headersSent: true }));
+    });
+});
 
 module.exports = router;
