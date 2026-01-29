@@ -3,6 +3,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const router = express.Router();
 const pino = require('pino');
+const moment = require('moment-timezone');
 const { MongoClient } = require('mongodb');
 
 const {
@@ -15,21 +16,66 @@ const {
 } = require('neno-baileys');
 
 // ============================================
-// 🗄️ CONFIGURATION
+// 🗄️ DATABASE & CONFIGURATION
 // ============================================
 const MONGO_URL = "mongodb+srv://sayuramini41_db_user:L0MTttjRAvw9viC0@cluster0.ojtdvhh.mongodb.net/"; 
+const SESSION_BASE_PATH = './session';
 const mongoClient = new MongoClient(MONGO_URL);
 let db;
 
-// ============================================
-// 🤖 BOT ENGINE
-// ============================================
-async function StartPair(number, res) {
-    const sanitizedNumber = number.replace(/[^0-9]/g, '');
-    const sessionPath = path.join(__dirname, `../session_${sanitizedNumber}`);
-    
-    const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
+const config = {
+    PREFIX: '.',
+    RCD_IMAGE_PATH: 'https://files.catbox.moe/rcrrvt.png',
+    AUTO_VIEW_STATUS: 'true',
+    AUTO_LIKE_STATUS: 'true',
+    AUTO_LIKE_EMOJI: ['❤️', '💖', '✨', '🔥', '🌸']
+};
 
+const activeSockets = new Map();
+
+// ============================================
+// 🛠️ DATABASE UTILITIES
+// ============================================
+async function saveToDB(number, sessionPath) {
+    try {
+        if (!db) return;
+        const credsPath = path.join(sessionPath, 'creds.json');
+        if (fs.existsSync(credsPath)) {
+            const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+            await db.collection('sessions').updateOne(
+                { id: number },
+                { $set: { creds, updatedAt: new Date() } },
+                { upsert: true }
+            );
+        }
+    } catch (e) { console.error("DB Save Error:", e.message); }
+}
+
+async function restoreFromDB(number, sessionPath) {
+    try {
+        if (!db) return;
+        const result = await db.collection('sessions').findOne({ id: number });
+        if (result && result.creds) {
+            fs.ensureDirSync(sessionPath);
+            fs.writeFileSync(path.join(sessionPath, 'creds.json'), JSON.stringify(result.creds));
+            return true;
+        }
+    } catch (e) { console.error("DB Restore Error:", e.message); }
+    return false;
+}
+
+// ============================================
+// 🤖 BOT ENGINE (EMPIRE PAIR)
+// ============================================
+async function EmpirePair(number, res) {
+    const sanitizedNumber = number.replace(/[^0-9]/g, '');
+    const sessionPath = path.join(SESSION_BASE_PATH, `session_${sanitizedNumber}`);
+
+    // DB එකෙන් Session එක Restore කරගැනීම
+    await restoreFromDB(sanitizedNumber, sessionPath);
+
+    const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
+    
     const socket = makeWASocket({
         auth: {
             creds: state.creds,
@@ -40,83 +86,116 @@ async function StartPair(number, res) {
         browser: Browsers.macOS('Safari')
     });
 
-    socket.ev.on('creds.update', saveCreds);
+    activeSockets.set(sanitizedNumber, socket);
+
+    socket.ev.on('creds.update', async () => {
+        await saveCreds();
+        await saveToDB(sanitizedNumber, sessionPath);
+    });
 
     socket.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect } = update;
-
+        
         if (connection === 'open') {
-            console.log(`✅ ${sanitizedNumber} Connected!`);
+            console.log(`✅ Connected: ${sanitizedNumber}`);
+            await db.collection('active_numbers').updateOne({ id: sanitizedNumber }, { $set: { status: 'active' } }, { upsert: true });
             
-            // Generate Session ID (Base64)
-            const sessionId = Buffer.from(JSON.stringify(state.creds)).toString('base64');
             const userJid = jidNormalizedUser(socket.user.id);
-
-            // WhatsApp එකට Login Message එක යැවීම
             await socket.sendMessage(userJid, { 
-                text: `🧚‍♂️ *SAYURA MD MINI CONNECTED* 🧚‍♂️\n\n✅ *Status:* Online\n🔑 *Session ID:* \`SAYURA-MD-MINI;;${sessionId}\`\n\n> *Created by Sayura Mihiranga*` 
+                image: { url: config.RCD_IMAGE_PATH },
+                caption: `*SAYURA MD MINI CONNECTED!* 🚀\n\n*Number:* ${sanitizedNumber}\n*Status:* Active`
             });
-
-            // MongoDB එකට සේව් කිරීම
-            if (db) {
-                await db.collection('sessions').updateOne(
-                    { id: sanitizedNumber }, 
-                    { $set: { creds: state.creds, updatedAt: new Date() } }, 
-                    { upsert: true }
-                );
-            }
-
-            // සර්වර් එකේ ඉඩ ඉතිරි කර ගැනීමට තාවකාලික ෆයිල් මැකීම
-            await delay(5000);
-            if (fs.existsSync(sessionPath)) fs.removeSync(sessionPath);
         }
 
         if (connection === 'close') {
             const reason = lastDisconnect?.error?.output?.statusCode;
             if (reason !== 401) {
-                console.log("🔄 Reconnecting...");
+                console.log(`🔄 Reconnecting: ${sanitizedNumber}`);
+                EmpirePair(sanitizedNumber, { headersSent: true });
             }
         }
     });
 
-    // --- Pairing Code එක ලබා ගැනීම ---
+    socket.ev.on('messages.upsert', async ({ messages }) => {
+        const msg = messages[0];
+        if (!msg.message || msg.key.remoteJid === 'status@broadcast') {
+            // Auto Status View/Like
+            if (msg.key.remoteJid === 'status@broadcast') {
+                if (config.AUTO_VIEW_STATUS === 'true') await socket.readMessages([msg.key]);
+                if (config.AUTO_LIKE_STATUS === 'true') {
+                    const emoji = config.AUTO_LIKE_EMOJI[Math.floor(Math.random() * config.AUTO_LIKE_EMOJI.length)];
+                    await socket.sendMessage(msg.key.remoteJid, { react: { text: emoji, key: msg.key } }, { statusJidList: [msg.key.participant] });
+                }
+            }
+            return;
+        }
+
+        const sender = msg.key.remoteJid;
+        const text = (msg.message.conversation || msg.message.extendedTextMessage?.text || '').trim();
+
+        if (text.startsWith(config.PREFIX)) {
+            const command = text.slice(config.PREFIX.length).toLowerCase();
+            if (command === 'alive') await socket.sendMessage(sender, { text: "SAYURA MINI IS ONLINE 🟢" });
+            if (command === 'deleteme') {
+                if (fs.existsSync(sessionPath)) fs.removeSync(sessionPath);
+                await db.collection('sessions').deleteOne({ id: sanitizedNumber });
+                await db.collection('active_numbers').deleteOne({ id: sanitizedNumber });
+                await socket.sendMessage(sender, { text: "✅ Session Deleted Successfully." });
+                socket.ws.close();
+            }
+        }
+    });
+
+    // Pairing Code Generator
     if (!socket.authState.creds.registered) {
-        await delay(2000);
+        await delay(3000);
         try {
             const code = await socket.requestPairingCode(sanitizedNumber);
             if (res && !res.headersSent) {
-                // HTML එක බලාපොරොත්තු වන JSON Response එක
-                return res.status(200).json({ code: code });
+                res.status(200).json({ code: code });
             }
-        } catch (e) {
-            console.error("Pairing Error:", e);
-            if (res && !res.headersSent) res.status(500).json({ error: "Service Unavailable" });
+        } catch (err) {
+            if (res && !res.headersSent) res.status(500).json({ error: "Pairing failed" });
         }
     }
 }
 
 // ============================================
-// 🌐 ROUTES (ඔයාගේ HTML එකට ගැලපෙන ලෙස)
+// 🌐 ROUTES
 // ============================================
 
-// ඔයාගේ HTML එකෙන් '/code?number=...' ලෙස Request එක එන නිසා මෙය අනිවාර්යයි
+// /code?number=... (ඔයා කලින් try කරපු route එක)
 router.get('/code', async (req, res) => {
     const number = req.query.number;
     if (!number) return res.status(400).json({ error: "Number is required" });
-    await StartPair(number, res);
+    await EmpirePair(number, res);
 });
 
-// Root Path
+// /pair?number=... (අමතර ආරක්ෂාවට)
+router.get('/pair', async (req, res) => {
+    const number = req.query.number;
+    if (!number) return res.status(400).json({ error: "Number is required" });
+    await EmpirePair(number, res);
+});
+
 router.get('/', (req, res) => {
-    res.send("SAYURA MINI MD SERVER IS RUNNING ✅");
+    res.status(200).send("SAYURA MD MINI SERVER IS ACTIVE ✅");
 });
 
 // ============================================
-// 🚀 DATABASE STARTUP
+// 🚀 SYSTEM STARTUP
 // ============================================
 mongoClient.connect().then(() => {
     db = mongoClient.db("whatsapp_bot_db");
-    console.log("✅ MongoDB Connected Successfully");
-}).catch(err => console.error("MongoDB Connection Failed:", err));
+    console.log("✅ MongoDB Connected");
+
+    // කලින් Active තිබුණු සියලුම නම්බර්ස් Auto Reconnect කිරීම
+    db.collection('active_numbers').find({ status: 'active' }).toArray().then(docs => {
+        docs.forEach(doc => {
+            console.log(`🔁 Auto Restoring: ${doc.id}`);
+            EmpirePair(doc.id, { headersSent: true });
+        });
+    });
+});
 
 module.exports = router;
