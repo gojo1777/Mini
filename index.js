@@ -1,34 +1,41 @@
 const express = require('express');
 const app = express();
-__path = process.cwd()
+const path = require('path');
 const bodyParser = require("body-parser");
 const PORT = process.env.PORT || 8000;
+
+// Path set කිරීම
+const __path = process.cwd();
+
+// Pair logic එක import කිරීම
 let code = require('./pair'); 
 
+// EventEmitter limit එක වැඩි කිරීම
 require('events').EventEmitter.defaultMaxListeners = 500;
 
-app.use('/code', code);
-app.use('/pair', async (req, res, next) => {
-    res.sendFile(__path + '/pair.html')
-});
-app.use('/', async (req, res, next) => {
-    res.sendFile(__path + '/main.html')
-});
-
+// Body parser middleware
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-app.listen(PORT, () => {
-    console.log(`
-Don't Forget To Give Star ‼️
+// Routes
+app.use('/code', code);
 
-SAYURA MINI BOT MD
-
-Server running on http://localhost:` + PORT)
+app.use('/pair', async (req, res, next) => {
+    res.sendFile(path.join(__path, 'pair.html'));
 });
 
-module.exports = app;
-calhost:` + PORT)
+app.use('/', async (req, res, next) => {
+    res.sendFile(path.join(__path, 'main.html'));
+});
+
+// Server එක start කිරීම
+app.listen(PORT, () => {
+    console.log(`
+---------------------------------------
+   SAYURA MINI BOT MD - SERVER STARTED
+   Server running on port: ${PORT}
+---------------------------------------
+    `);
 });
 
 module.exports = app;
