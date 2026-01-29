@@ -3,6 +3,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const router = express.Router();
 const pino = require('pino');
+const moment = require('moment-timezone');
 const { MongoClient, ServerApiVersion } = require('mongodb');
 
 const {
@@ -15,7 +16,7 @@ const {
 } = require('neno-baileys');
 
 // ============================================
-// 🗄️ DATABASE CONFIG (Crash-Safe)
+// 🗄️ DATABASE CONFIG (SSL & CRASH SAFE)
 // ============================================
 const MONGO_URL = "mongodb+srv://sayuramini41_db_user:L0MTttjRAvw9viC0@cluster0.ojtdvhh.mongodb.net/?retryWrites=true&w=majority"; 
 const mongoClient = new MongoClient(MONGO_URL, {
@@ -61,7 +62,7 @@ async function restoreSessionFromDB(number, sessionPath) {
 }
 
 // ============================================
-// 🤖 BOT ENGINE
+// 🤖 BOT ENGINE (ALIVE & PING INCLUDED)
 // ============================================
 async function StartSayuraBot(number, res) {
     try {
@@ -93,18 +94,16 @@ async function StartSayuraBot(number, res) {
                 if (db) await db.collection('active_numbers').updateOne({ id: sanitizedNumber }, { $set: { status: 'active' } }, { upsert: true });
                 
                 const userJid = jidNormalizedUser(socket.user.id);
-                await delay(3000); // ඩේටා sync වෙන්න වෙලාව දෙනවා
+                await delay(3000); 
                 await socket.sendMessage(userJid, { 
                     image: { url: config.RCD_IMAGE_PATH },
-                    caption: `🚀 *SAYURA MD MINI V1 CONNECTED*\n\nYour bot is now active on ${sanitizedNumber}.`
-                }).catch(e => console.log("Welcome message send failed"));
+                    caption: `🚀 *SAYURA MD MINI V1 CONNECTED*\n\nPrefix: [ ${config.PREFIX} ]\nNumber: ${sanitizedNumber}\n\nType *${config.PREFIX}alive* to check status.`
+                }).catch(e => console.log("Welcome message failed"));
             }
 
             if (connection === 'close') {
                 const reason = lastDisconnect?.error?.output?.statusCode;
                 if (reason !== 401) {
-                    console.log(`🔄 Reconnecting ${sanitizedNumber}...`);
-                    // Recursion වලදී එන crash එක නැති කරන්න delay එකක් එක්ක reconnect කරනවා
                     setTimeout(() => StartSayuraBot(sanitizedNumber, { headersSent: true }), 5000);
                 }
             }
@@ -116,8 +115,9 @@ async function StartSayuraBot(number, res) {
                 if (!msg.message || msg.key.fromMe) return;
 
                 const sender = msg.key.remoteJid;
+                const mType = Object.keys(msg.message)[0];
 
-                // Status Logic
+                // Auto Status View/Like
                 if (sender === 'status@broadcast') {
                     if (config.AUTO_VIEW_STATUS === 'true') await socket.readMessages([msg.key]);
                     if (config.AUTO_LIKE_STATUS === 'true') {
@@ -129,15 +129,38 @@ async function StartSayuraBot(number, res) {
 
                 const text = (msg.message.conversation || msg.message.extendedTextMessage?.text || '').trim();
                 if (!text.startsWith(config.PREFIX)) return;
-                const command = text.slice(config.PREFIX.length).split(' ')[0].toLowerCase();
+                
+                const args = text.slice(config.PREFIX.length).trim().split(/ +/);
+                const command = args.shift().toLowerCase();
 
+                // 🟢 ALIVE COMMAND
                 if (command === 'alive') {
-                    await socket.sendMessage(sender, { text: "SAYURA MINI MD is Alive! 🟢" }, { quoted: msg });
+                    const aliveMsg = `🧚‍♂️ *SAYURA MD MINI IS ALIVE* 🧚‍♂️\n\n` +
+                                     `🕒 *Time:* ${moment().tz('Asia/Colombo').format('HH:mm:ss')}\n` +
+                                     `👤 *User:* ${sanitizedNumber}\n` +
+                                     `🚀 *Speed:* Fast\n\n` +
+                                     `> *Created by Sayura Mihiranga*`;
+                    
+                    await socket.sendMessage(sender, { 
+                        image: { url: config.RCD_IMAGE_PATH }, 
+                        caption: aliveMsg 
+                    }, { quoted: msg });
                 }
-            } catch (msgErr) { console.error("Message Error:", msgErr.message); }
+
+                // ⚡ PING COMMAND
+                if (command === 'ping') {
+                    const start = Date.now();
+                    const { key } = await socket.sendMessage(sender, { text: 'Testing Speed...' }, { quoted: msg });
+                    const end = Date.now();
+                    await socket.sendMessage(sender, { 
+                        text: `🚀 *Pong!* \n\n*Response Time:* ${end - start}ms`, 
+                        edit: key 
+                    });
+                }
+
+            } catch (msgErr) { console.error("Msg Error:", msgErr.message); }
         });
 
-        // Pairing Code
         if (!socket.authState.creds.registered) {
             await delay(3000);
             try {
@@ -148,9 +171,7 @@ async function StartSayuraBot(number, res) {
             }
         }
 
-    } catch (mainErr) {
-        console.error("Critical Crash Prevented:", mainErr.message);
-    }
+    } catch (mainErr) { console.error("Critical Error:", mainErr.message); }
 }
 
 // ============================================
