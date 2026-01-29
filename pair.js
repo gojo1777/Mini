@@ -15,29 +15,18 @@ const {
 } = require('neno-baileys');
 
 // ============================================
-// 🗄️ SETTINGS
+// 🗄️ CONFIGURATION
 // ============================================
 const MONGO_URL = "mongodb+srv://sayuramini41_db_user:L0MTttjRAvw9viC0@cluster0.ojtdvhh.mongodb.net/"; 
 const mongoClient = new MongoClient(MONGO_URL);
 let db;
 
-const config = {
-    RCD_IMAGE: 'https://files.catbox.moe/rcrrvt.png', // Login Image
-};
-
 // ============================================
-// 🛠️ DATABASE UTILS
-// ============================================
-async function saveToDB(id, creds) {
-    if (db) await db.collection('sessions').updateOne({ id }, { $set: { creds, date: new Date() } }, { upsert: true });
-}
-
-// ============================================
-// 🤖 PAIRING FUNCTION
+// 🤖 BOT ENGINE
 // ============================================
 async function StartPair(number, res) {
     const sanitizedNumber = number.replace(/[^0-9]/g, '');
-    const sessionPath = `./session/${sanitizedNumber}`;
+    const sessionPath = path.join(__dirname, `../session_${sanitizedNumber}`);
     
     const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
 
@@ -57,71 +46,77 @@ async function StartPair(number, res) {
         const { connection, lastDisconnect } = update;
 
         if (connection === 'open') {
-            console.log(`✅ Connected: ${sanitizedNumber}`);
+            console.log(`✅ ${sanitizedNumber} Connected!`);
             
-            // 💾 Save to MongoDB
-            await saveToDB(sanitizedNumber, state.creds);
-
-            // 📤 Send Login Message to WhatsApp
-            const userJid = jidNormalizedUser(socket.user.id);
+            // Generate Session ID (Base64)
             const sessionId = Buffer.from(JSON.stringify(state.creds)).toString('base64');
-            
-            const msg = `🧚‍♂️ *SAYURA MD MINI CONNECTED* 🧚‍♂️\n\n` +
-                        `✅ *Status:* Online\n` +
-                        `📱 *Number:* ${sanitizedNumber}\n` +
-                        `🔑 *Session ID:* \`SAYURA-MD-MINI;;${sessionId}\`\n\n` +
-                        `> *Keep your session ID safe!*`;
+            const userJid = jidNormalizedUser(socket.user.id);
 
+            // WhatsApp එකට Login Message එක යැවීම
             await socket.sendMessage(userJid, { 
-                image: { url: config.RCD_IMAGE }, 
-                caption: msg 
+                text: `🧚‍♂️ *SAYURA MD MINI CONNECTED* 🧚‍♂️\n\n✅ *Status:* Online\n🔑 *Session ID:* \`SAYURA-MD-MINI;;${sessionId}\`\n\n> *Created by Sayura Mihiranga*` 
             });
 
+            // MongoDB එකට සේව් කිරීම
+            if (db) {
+                await db.collection('sessions').updateOne(
+                    { id: sanitizedNumber }, 
+                    { $set: { creds: state.creds, updatedAt: new Date() } }, 
+                    { upsert: true }
+                );
+            }
+
+            // සර්වර් එකේ ඉඩ ඉතිරි කර ගැනීමට තාවකාලික ෆයිල් මැකීම
             await delay(5000);
-            process.exit(0); // Optional: Restart to free memory
+            if (fs.existsSync(sessionPath)) fs.removeSync(sessionPath);
         }
 
         if (connection === 'close') {
             const reason = lastDisconnect?.error?.output?.statusCode;
-            if (reason !== 401) StartPair(sanitizedNumber, null);
+            if (reason !== 401) {
+                console.log("🔄 Reconnecting...");
+            }
         }
     });
 
-    // --- Pairing Code Generation ---
+    // --- Pairing Code එක ලබා ගැනීම ---
     if (!socket.authState.creds.registered) {
         await delay(2000);
         try {
             const code = await socket.requestPairingCode(sanitizedNumber);
             if (res && !res.headersSent) {
-                return res.status(200).json({ code }); // Frontend එකට Code එක යවනවා
+                // HTML එක බලාපොරොත්තු වන JSON Response එක
+                return res.status(200).json({ code: code });
             }
         } catch (e) {
+            console.error("Pairing Error:", e);
             if (res && !res.headersSent) res.status(500).json({ error: "Service Unavailable" });
         }
     }
 }
 
 // ============================================
-// 🌐 ROUTES
+// 🌐 ROUTES (ඔයාගේ HTML එකට ගැලපෙන ලෙස)
 // ============================================
 
-// Frontend එකෙන් "Submit" එබුවම කෝල් වෙන්නේ මේ Route එක
+// ඔයාගේ HTML එකෙන් '/code?number=...' ලෙස Request එක එන නිසා මෙය අනිවාර්යයි
 router.get('/code', async (req, res) => {
-    const num = req.query.number;
-    if (!num) return res.status(400).json({ error: "Number required" });
-    await StartPair(num, res);
+    const number = req.query.number;
+    if (!number) return res.status(400).json({ error: "Number is required" });
+    await StartPair(number, res);
 });
 
-// Backup route
-router.get('/pair', async (req, res) => {
-    const num = req.query.number;
-    await StartPair(num, res);
+// Root Path
+router.get('/', (req, res) => {
+    res.send("SAYURA MINI MD SERVER IS RUNNING ✅");
 });
 
-// Database Connection
+// ============================================
+// 🚀 DATABASE STARTUP
+// ============================================
 mongoClient.connect().then(() => {
     db = mongoClient.db("whatsapp_bot_db");
-    console.log("✅ MongoDB Connected");
-});
+    console.log("✅ MongoDB Connected Successfully");
+}).catch(err => console.error("MongoDB Connection Failed:", err));
 
 module.exports = router;
