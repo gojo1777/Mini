@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <title>𝐂ʏʙᴇʀ-𝐋ᴏᴋᴜ 𝐑ɪᴋᴏ 𝐌ɪɴɪ 𝐁ᴏᴛ</title>
+  <title>🧚‍♂️ 𝐒𝐀𝐘𝐔𝐑𝐀-𝐌𝐃-𝐌𝐈𝐍𝐈 🧚‍♂️</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css"/>
   <style>
     body {
@@ -26,13 +26,14 @@
 
     .box {
       width: 320px;
-      padding: 20px;
-      background-color: rgba(0, 0, 0, 0.8);
-      border-radius: 10px;
+      padding: 25px;
+      background-color: rgba(0, 0, 0, 0.85);
+      border-radius: 15px;
       text-align: center;
       box-shadow: 0 0 25px #00f2ff;
       z-index: 2;
-      backdrop-filter: blur(5px);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(0, 242, 255, 0.3);
     }
 
     @keyframes flicker {
@@ -49,24 +50,15 @@
     .input-container {
       display: flex;
       width: 100%;
-      margin-top: 15px;
-    }
-
-    .input-container input,
-    .input-container button {
-      height: 3rem;
-      font-size: 1rem;
-      border: none;
-      outline: none;
-      box-sizing: border-box;
-      transition: none !important;
-      transform: none !important;
-      resize: none !important;
-      appearance: none;
+      margin-top: 20px;
     }
 
     .input-container input {
       width: 70%;
+      height: 3.5rem;
+      font-size: 1rem;
+      border: none;
+      outline: none;
       border-radius: 0.8rem 0 0 0.8rem;
       background: #e0f7ff;
       color: #000;
@@ -75,6 +67,9 @@
 
     .input-container button {
       width: 30%;
+      height: 3.5rem;
+      border: none;
+      outline: none;
       border-radius: 0 0.8rem 0.8rem 0;
       background: #00bfff;
       color: #fff;
@@ -87,14 +82,15 @@
       color: #000;
     }
 
-    a.centered-text {
-      color: white;
-      display: block;
-      margin-top: 20px;
-      font-weight: bold;
+    #copy {
+        cursor: pointer;
+        display: inline-block;
+        padding: 10px;
+        border: 1px dashed #00f2ff;
+        border-radius: 5px;
+        margin-top: 15px;
     }
 
-    /* Video background */
     .video-background {
       position: fixed;
       top: 0;
@@ -106,7 +102,6 @@
       opacity: 0.5;
     }
 
-    /* Sound control button */
     .sound-btn {
       position: fixed;
       bottom: 20px;
@@ -121,156 +116,127 @@
       cursor: pointer;
       z-index: 10;
       box-shadow: 0 0 10px #00f2ff;
-      transition: all 0.3s;
     }
 
-    .sound-btn:hover {
-      background: rgba(0, 255, 255, 0.9);
-      transform: scale(1.1);
-    }
-
-    .sound-btn i {
-      color: white;
-      font-size: 20px;
-    }
-
-    /* Neon dot overlay */
     .neon-overlay {
       position: fixed;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
-      background: transparent;
-      overflow: hidden;
-      z-index: 1;
       pointer-events: none;
+      z-index: 1;
     }
 
     .dot {
       position: absolute;
-      width: 4px;
-      height: 4px;
+      width: 3px;
+      height: 3px;
       background: #00ffff;
       border-radius: 50%;
-      animation: rise 5s linear infinite;
-      opacity: 0.6;
+      animation: rise linear infinite;
     }
 
     @keyframes rise {
-      0% {
-        transform: translateY(100vh) scale(0.5);
-        opacity: 0.2;
-      }
-      100% {
-        transform: translateY(-10vh) scale(1);
-        opacity: 1;
-      }
+      0% { transform: translateY(100vh); opacity: 0; }
+      50% { opacity: 1; }
+      100% { transform: translateY(-10vh); opacity: 0; }
     }
   </style>
 </head>
 <body>
-  <!-- Video Background -->
+
   <video class="video-background" id="bgVideo" autoplay muted loop>
     <source src="https://files.catbox.moe/dggveb.mp4" type="video/mp4">
-    Your browser does not support HTML5 video.
   </video>
   
-  <!-- Neon dot overlay -->
   <div class="neon-overlay" id="dots"></div>
 
-  <!-- Sound control button -->
   <div class="sound-btn" id="soundBtn">
     <i class="fas fa-volume-mute" id="soundIcon"></i>
   </div>
 
   <div class="container">
-    <div class="box" id="box">
-      <div id="text">
-        <i class="fa fa-user" style="color:#00ffff;"></i>
-        <h3>🧚‍♂️SAYURA MD MINI🧚‍♂️</h3>
-        <h6> CREACT BY SAYURA MIHIRANGA</h6>
-        <h6>🔢 Enter your number with country code</h6>
+    <div class="box">
+        <i class="fa fa-robot" style="color:#00ffff; font-size: 40px;"></i>
+        <h3>SAYURA MD MINI</h3>
+        <h6 style="font-size: 10px; letter-spacing: 2px;">BY SAYURA MIHIRANGA</h6>
+        <p style="color: #fff; font-size: 12px; margin-top: 15px;">Enter Number With Country Code</p>
 
         <div class="input-container">
-          <input placeholder="9476xxxxxxx" type="number" id="number">
-          <button id="submit">Submit</button>
+          <input placeholder="947xxxxxxxxx" type="number" id="number">
+          <button id="submit">GET CODE</button>
         </div>
 
-        <a id="waiting-message" class="centered-text" style="display: none;">Please wait a while...</a>
-        <main id="pair"></main>
-      </div>
+        <div id="pair" style="margin-top: 20px;"></div>
     </div>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.0.0-alpha.1/axios.min.js"></script>
   <script>
-    let a = document.getElementById("pair");
-    let b = document.getElementById("submit");
-    let c = document.getElementById("number");
+    const pairDiv = document.getElementById("pair");
+    const submitBtn = document.getElementById("submit");
+    const numberInput = document.getElementById("number");
     const video = document.getElementById("bgVideo");
     const soundBtn = document.getElementById("soundBtn");
     const soundIcon = document.getElementById("soundIcon");
 
-    // Sound control functionality
+    // Music Toggle
     soundBtn.addEventListener("click", () => {
-      if (video.muted) {
-        video.muted = false;
-        soundIcon.classList.remove("fa-volume-mute");
-        soundIcon.classList.add("fa-volume-up");
-      } else {
-        video.muted = true;
-        soundIcon.classList.remove("fa-volume-up");
-        soundIcon.classList.add("fa-volume-mute");
-      }
+      video.muted = !video.muted;
+      soundIcon.className = video.muted ? "fas fa-volume-mute" : "fas fa-volume-up";
     });
 
-    async function Copy() {
-      let text = document.getElementById("copy").innerText;
-      let obj = document.getElementById("copy");
-      await navigator.clipboard.writeText(obj.innerText.replace('CODE: ', ''));
-      obj.innerText = "COPIED";
-      obj.style = "color:blue;font-weight:bold";
-      obj.size = "5";
+    // Copy to Clipboard
+    async function CopyCode() {
+      const codeElement = document.getElementById("pairCode");
+      await navigator.clipboard.writeText(codeElement.innerText);
+      const originalText = document.getElementById("copy").innerHTML;
+      document.getElementById("copy").innerHTML = "<span style='color:lime'>COPIED!</span>";
       setTimeout(() => {
-        obj.innerText = text;
-        obj.style = "color:white;font-weight-bold";
-        obj.size = "5";
-      }, 500);
+        document.getElementById("copy").innerHTML = originalText;
+      }, 2000);
     }
 
-    b.addEventListener("click", async (e) => {
+    // Submit Action
+    submitBtn.addEventListener("click", async (e) => {
       e.preventDefault();
-      if (!c.value) {
-        a.innerHTML = '<a style="color:white;font-weight:bold">Enter your WhatsApp number with Country Code</a><br><br>';
-      } else if (c.value.replace(/[^0-9]/g, "").length < 11) {
-        a.innerHTML = '<a style="color:red;font-weight:bold">Invalid Number</a><br><br>';
-      } else {
-        const number = c.value.replace(/[^0-9]/g, "");
-        c.type = "text";
-        c.value = "+" + number;
-        c.style = "color:black;font-size:20px";
-        a.innerHTML = '<a style="color:white;font-weight:bold">Please Wait...</a><br><br>';
-        let { data } = await axios(`/code?number=${number}`);
-        let code = data.code || "Service Unavailable";
-        a.innerHTML = `<font id="copy" onclick="Copy()" style="color:red;font-weight:bold" size="5">CODE: <span style="color:white;">${code}</span></font><br><br><br>`;
+      const num = numberInput.value.replace(/[^0-9]/g, "");
+
+      if (!num || num.length < 10) {
+        pairDiv.innerHTML = '<span style="color:red">Invalid Number!</span>';
+        return;
+      }
+
+      pairDiv.innerHTML = '<span style="color:white">Requesting Code...</span>';
+
+      try {
+        // Backend එකේ /code route එකට request එක යවනවා
+        let { data } = await axios.get(`/code?number=${num}`);
+        
+        if (data.code) {
+          pairDiv.innerHTML = `
+            <div id="copy" onclick="CopyCode()">
+              <div style="color:#00f2ff; font-size: 12px;">CLICK TO COPY</div>
+              <div id="pairCode" style="color:white; font-size: 28px; font-weight: bold; letter-spacing: 5px;">${data.code}</div>
+            </div>`;
+        } else {
+          pairDiv.innerHTML = '<span style="color:yellow">Try Again Later</span>';
+        }
+      } catch (err) {
+        pairDiv.innerHTML = '<span style="color:red">Server Error! Connect to Backend.</span>';
       }
     });
 
-    // Dot animation
-    const bg = document.getElementById("dots");
-    for (let i = 0; i < 80; i++) {
+    // Background dots
+    const dotsContainer = document.getElementById("dots");
+    for (let i = 0; i < 50; i++) {
       const dot = document.createElement("div");
-      dot.classList.add("dot");
+      dot.className = "dot";
       dot.style.left = Math.random() * 100 + "vw";
-      dot.style.animationDuration = 3 + Math.random() * 5 + "s";
+      dot.style.animationDuration = (Math.random() * 3 + 2) + "s";
       dot.style.animationDelay = Math.random() * 5 + "s";
-      bg.appendChild(dot);
-    }
-  </script>
-</body>
-</html>
-ndChild(dot);
+      dotsContainer.appendChild(dot);
     }
   </script>
 </body>
